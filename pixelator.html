@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>B&W Pixelator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    h1 {
+      color: #333;
+      margin-top: 0;
+    }
+    
+    .controls {
+      margin: 20px 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: center;
+    }
+    
+    .slider-container {
+      flex: 1;
+      min-width: 200px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    button {
+      padding: 10px 15px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-right: 10px;
+    }
+    
+    button:hover {
+      background-color: #45a049;
+    }
+    
+    #newImageBtn {
+      background-color: #2196F3;
+    }
+    
+    #newImageBtn:hover {
+      background-color: #0b7dda;
+    }
+    
+    #autoThresholdBtn {
+      background-color: #9c27b0;
+    }
+    
+    #autoThresholdBtn:hover {
+      background-color: #7b1fa2;
+    }
+    
+    #sliderThreshold, #sliderPixelSize {
+      width: 100%;
+    }
+    
+    #canvasContainer {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: center;
+    }
+    
+    .canvas-wrapper {
+      position: relative;
+    }
+    
+    .canvas-label {
+      position: absolute;
+      top: -25px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Black and White Pixelator</h1>
+    
+    <div class="controls">
+      <div class="slider-container">
+        <label for="sliderThreshold">Threshold (0-255): <span id="thresholdValue">128</span></label>
+        <input type="range" id="sliderThreshold" min="0" max="255" value="128">
+      </div>
+      
+      <div class="slider-container">
+        <label for="sliderPixelSize">Pixel Size: <span id="pixelSizeValue">8</span>px</label>
+        <input type="range" id="sliderPixelSize" min="1" max="20" value="8">
+      </div>
+      
+      <div style="display: flex; align-items: center; margin-top: 5px;">
+        <input type="checkbox" id="antiAliasing" checked>
+        <label for="antiAliasing" style="margin-left: 5px;">Enable Anti-Aliasing</label>
+      </div>
+      
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
+        <button id="uploadBtn">Upload Image</button>
+        <input type="file" id="fileInput" accept="image/*" style="display: none;">
+        <button id="newImageBtn">New Random Image</button>
+        <button id="autoThresholdBtn">Auto Threshold</button>
+      </div>
+    </div>
+    
+    <div id="canvasContainer"></div>
+  </div>
+
+  <script>
+    let img;
+    let originalCanvas, grayscaleCanvas, thresholdCanvas, pixelatedCanvas;
+    let thresholdValue = 128;
+    let pixelSize = 8;
+    let canvasSize = 300;
+    let antiAliasing = true;
+    
+    function setup() {
+      // Create canvases
+      originalCanvas = createCanvas(canvasSize, canvasSize);
+      originalCanvas.parent('canvasContainer');
+      originalCanvas.elt.classList.add('canvas-wrapper');
+      let originalLabel = createDiv('Original');
+      originalLabel.addClass('canvas-label');
+      originalLabel.parent(originalCanvas.elt);
+      
+      grayscaleCanvas = createCanvas(canvasSize, canvasSize);
+      grayscaleCanvas.parent('canvasContainer');
+      grayscaleCanvas.elt.classList.add('canvas-wrapper');
+      let grayscaleLabel = createDiv('Grayscale');
+      grayscaleLabel.addClass('canvas-label');
+      grayscaleLabel.parent(grayscaleCanvas.elt);
+      
+      thresholdCanvas = createCanvas(canvasSize, canvasSize);
+      thresholdCanvas.parent('canvasContainer');
+      thresholdCanvas.elt.classList.add('canvas-wrapper');
+      let thresholdLabel = createDiv('Black & White');
+      thresholdLabel.addClass('canvas-label');
+      thresholdLabel.parent(thresholdCanvas.elt);
+      
+      pixelatedCanvas = createCanvas(canvasSize, canvasSize);
+      pixelatedCanvas.parent('canvasContainer');
+      pixelatedCanvas.elt.classList.add('canvas-wrapper');
+      let pixelatedLabel = createDiv('Pixelated B&W');
+      pixelatedLabel.addClass('canvas-label');
+      pixelatedLabel.parent(pixelatedCanvas.elt);
+      
+      // Load a default image from Lorem Picsum
+      img = loadImage('https://picsum.photos/600', imageLoaded);
+      
+      // Set up UI event listeners
+      document.getElementById('sliderThreshold').addEventListener('input', function() {
+        thresholdValue = parseInt(this.value);
+        document.getElementById('thresholdValue').textContent = thresholdValue;
+        processImage();
+      });
+      
+      document.getElementById('sliderPixelSize').addEventListener('input', function() {
+        pixelSize = parseInt(this.value);
+        document.getElementById('pixelSizeValue').textContent = pixelSize;
+        processImage();
+      });
+      
+      document.getElementById('uploadBtn').addEventListener('click', function() {
+        document.getElementById('fileInput').click();
+      });
+      
+      document.getElementById('fileInput').addEventListener('change', function(e) {
+        if (e.target.files && e.target.files[0]) {
+          let file = e.target.files[0];
+          let reader = new FileReader();
+          reader.onload = function(event) {
+            loadImage(event.target.result, function(loadedImg) {
+              img = loadedImg;
+              imageLoaded();
+            });
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+      
+      document.getElementById('newImageBtn').addEventListener('click', function() {
+        // Add random parameter to avoid browser caching
+        let randomParam = Math.floor(Math.random() * 1000);
+        loadImage(`https://picsum.photos/600?random=${randomParam}`, function(loadedImg) {
+          img = loadedImg;
+          imageLoaded();
+        });
+      });
+      
+      document.getElementById('autoThresholdBtn').addEventListener('click', function() {
+        if (!img) return;
+        
+        // Calculate the average brightness of the grayscale image
+        let grayscaleImg = createGrayscale(img);
+        let avgBrightness = calculateAverageBrightness(grayscaleImg);
+        
+        // Set the threshold to the average brightness
+        thresholdValue = avgBrightness;
+        document.getElementById('sliderThreshold').value = thresholdValue;
+        document.getElementById('thresholdValue').textContent = Math.round(thresholdValue);
+        
+        // Process the image with the new threshold
+        processImage();
+      });
+      
+      document.getElementById('antiAliasing').addEventListener('change', function() {
+        antiAliasing = this.checked;
+        processImage();
+      });
+    }
+    
+    function imageLoaded() {
+      processImage();
+    }
+    
+    function processImage() {
+      if (!img) return;
+      
+      // Display original image
+      originalCanvas.drawingContext.clearRect(0, 0, canvasSize, canvasSize);
+      drawImageCentered(img, originalCanvas);
+      
+      // Process and display grayscale
+      grayscaleCanvas.drawingContext.clearRect(0, 0, canvasSize, canvasSize);
+      let grayscaleImg = createGrayscale(img);
+      drawImageCentered(grayscaleImg, grayscaleCanvas);
+      
+      // Process and display threshold
+      thresholdCanvas.drawingContext.clearRect(0, 0, canvasSize, canvasSize);
+      let thresholdImg = applyThreshold(grayscaleImg, thresholdValue);
+      drawImageCentered(thresholdImg, thresholdCanvas);
+      
+      // Process and display pixelated
+      pixelatedCanvas.drawingContext.clearRect(0, 0, canvasSize, canvasSize);
+      let pixelatedImg = pixelate(thresholdImg, pixelSize);
+      drawImageCentered(pixelatedImg, pixelatedCanvas);
+    }
+    
+    function createGrayscale(sourceImg) {
+      let resultImg = createImage(sourceImg.width, sourceImg.height);
+      resultImg.copy(sourceImg, 0, 0, sourceImg.width, sourceImg.height, 0, 0, sourceImg.width, sourceImg.height);
+      resultImg.loadPixels();
+      
+      for (let i = 0; i < resultImg.pixels.length; i += 4) {
+        let r = resultImg.pixels[i];
+        let g = resultImg.pixels[i + 1];
+        let b = resultImg.pixels[i + 2];
+        
+        // Convert to grayscale using luminance method
+        let gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        resultImg.pixels[i] = gray;
+        resultImg.pixels[i + 1] = gray;
+        resultImg.pixels[i + 2] = gray;
+      }
+      
+      resultImg.updatePixels();
+      return resultImg;
+    }
+    
+    function applyThreshold(sourceImg, threshold) {
+      let resultImg = createImage(sourceImg.width, sourceImg.height);
+      resultImg.copy(sourceImg, 0, 0, sourceImg.width, sourceImg.height, 0, 0, sourceImg.width, sourceImg.height);
+      resultImg.loadPixels();
+      
+      for (let i = 0; i < resultImg.pixels.length; i += 4) {
+        let gray = resultImg.pixels[i]; // Already grayscale, so just take R channel
+        let bw = gray > threshold ? 255 : 0;
+        resultImg.pixels[i] = bw;
+        resultImg.pixels[i + 1] = bw;
+        resultImg.pixels[i + 2] = bw;
+      }
+      
+      resultImg.updatePixels();
+      return resultImg;
+    }
+    
+    function pixelate(sourceImg, pixelSize) {
+      let w = sourceImg.width;
+      let h = sourceImg.height;
+      let resultImg = createImage(w, h);
+      
+      // Copy source image first
+      resultImg.copy(sourceImg, 0, 0, w, h, 0, 0, w, h);
+      resultImg.loadPixels();
+      
+      // Create temporary canvas to do the pixelation
+      let tempCanvas = document.createElement('canvas');
+      tempCanvas.width = w;
+      tempCanvas.height = h;
+      let ctx = tempCanvas.getContext('2d');
+      
+      // Draw source image to temp canvas
+      ctx.drawImage(sourceImg.canvas, 0, 0);
+      
+      // Set anti-aliasing based on user preference
+      ctx.imageSmoothingEnabled = antiAliasing;
+      ctx.clearRect(0, 0, w, h);
+      
+      // Scale down and up to create pixelation effect
+      let scaledW = Math.max(1, Math.floor(w / pixelSize));
+      let scaledH = Math.max(1, Math.floor(h / pixelSize));
+      
+      ctx.drawImage(sourceImg.canvas, 0, 0, w, h, 0, 0, scaledW, scaledH);
+      ctx.drawImage(tempCanvas, 0, 0, scaledW, scaledH, 0, 0, w, h);
+      
+      // Get the pixelated data
+      let pixelData = ctx.getImageData(0, 0, w, h).data;
+      
+      // Update our result image
+      for (let i = 0; i < resultImg.pixels.length; i += 4) {
+        resultImg.pixels[i] = pixelData[i];
+        resultImg.pixels[i + 1] = pixelData[i + 1];
+        resultImg.pixels[i + 2] = pixelData[i + 2];
+        resultImg.pixels[i + 3] = pixelData[i + 3];
+      }
+      
+      resultImg.updatePixels();
+      return resultImg;
+    }
+    
+    function calculateAverageBrightness(grayscaleImg) {
+      // Make sure the image pixels are loaded
+      grayscaleImg.loadPixels();
+      
+      let totalBrightness = 0;
+      let pixelCount = 0;
+      
+      // Since it's grayscale, we only need to look at one channel (R, G, or B are all the same)
+      for (let i = 0; i < grayscaleImg.pixels.length; i += 4) {
+        totalBrightness += grayscaleImg.pixels[i];
+        pixelCount++;
+      }
+      
+      // Calculate and return the average
+      return totalBrightness / pixelCount;
+    }
+    
+    function drawImageCentered(img, targetCanvas) {
+      let ctx = targetCanvas.drawingContext;
+      let aspectRatio = img.width / img.height;
+      let newWidth, newHeight;
+      
+      if (aspectRatio > 1) {
+        newWidth = canvasSize;
+        newHeight = canvasSize / aspectRatio;
+      } else {
+        newHeight = canvasSize;
+        newWidth = canvasSize * aspectRatio;
+      }
+      
+      let x = (canvasSize - newWidth) / 2;
+      let y = (canvasSize - newHeight) / 2;
+      
+      ctx.drawImage(img.canvas, x, y, newWidth, newHeight);
+    }
+  </script>
+</body>
+</html>
